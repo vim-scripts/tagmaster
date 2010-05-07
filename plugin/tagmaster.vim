@@ -1,11 +1,12 @@
+let g:tagmaster_addupdate = 1
 let g:tagmaster_enable_autotags = 0
 let g:tagmaster_options = "--fields=+iaS --extra=+q --c-kinds=+pd --c++-kinds=+pd"
 let g:tagmaster_recursive = 1
 
 augroup autotags
 
-au autotags FileType c au autotags BufWritePost <buffer> call tagmaster#Update()
-au autotags FileType cpp au autotags BufWritePost <buffer> call tagmaster#Update()
+au autotags FileType c au autotags BufWritePost <buffer> call tagmaster#AutoUpdate()
+au autotags FileType cpp au autotags BufWritePost <buffer> call tagmaster#AutoUpdate()
 
 com! -complete=file -nargs=* TGenerate call tagmaster#GenTagsForProject(<f-args>)
 com! -complete=file -nargs=* TUpdate call tagmaster#GenTagsForFile(<f-args>)
@@ -57,14 +58,35 @@ function! tagmaster#DelTagsForFile(...)
 endfunction
 
 function! tagmaster#GenTagsForFile(...)
-  let fname = expand(expand("%"))
-  if a:0 > 0
-    let fname = a:1
+  let fname = ""
+  let tagsname = ""
+  let allowadd = g:tagmaster_addupdate
+  for arg in a:000
+    if arg == '-noadd'
+      let allowadd = 0
+    elseif arg == '-add'
+      let allowadd = 1
+    elseif fname == ""
+      let fname = arg
+    else
+      let tagsname = arg
+    endif
+  endfor
+  if fname == ""
+    let fname = expand(expand("%"))
   endif
-  if a:0 > 1
-    call tagmaster#MakeTags(fname, a:2)
+  if tagsname == ""
+    if allowadd == 1
+      call tagmaster#MakeTags(fname)
+    else
+      call tagmaster#Update(fname)
+    endif
   else
-    call tagmaster#MakeTags(fname)
+    if allowadd == 1
+      call tagmaster#MakeTags(fname, tagsname)
+    else
+      call tagmaster#Update(fname, tagsname)
+    endif
   endif
 endfunction
 
@@ -140,23 +162,40 @@ function! tagmaster#Create(...)
   endif
 endfunction
 
-" Update tags for current file. Doesn't add tags for current file if there
-" weren't.
-" Specially for auto update tags on write.
-function! tagmaster#Update()
+function! tagmaster#AutoUpdate()
   if g:tagmaster_enable_autotags == 0
     return
   endif
 
+  tagmaster#Update()
+endfunction
+
+" Update tags for current file. Doesn't add tags for current file if there
+" weren't.
+" Specially for auto update tags on write.
+function! tagmaster#Update(...)
   let tagfiles = tagfiles()
+  let fname = expand("%")
+  if a:0 > 1
+    let tagfiles = [a:2]
+    let fname = a:1
+  elseif a:0 > 0
+    let fname = a:1
+  endif
+
+  let fname = fnamemodify(expand(fname), ":p")
 
   for tagfile in l:tagfiles
-    exe("silent! vimgrep /".expand("%")."/jg ".tagfile)
+    let tagfile = fnamemodify(expand(tagfile), ":p")
+    let file = tagmaster#RelFName(fname, tagfile)
+
+    exe("silent! vimgrep /\<".escape(file, "\.\\")."\>/jg ".tagfile)
+
     let lst = getqflist()
-    if len(lst)
-      exe("silent! !grep -v -E -e'[[:blank:]]".tagmaster#RelFName(expand("%"), tagfile)."[[:blank:]]' ".tagfile.">.at.".tagfile)
-      exe("silent! !ctags --tag-relative=yes -a -f.at.".tagfile." ".g:tagmaster_options." ".expand("%"))
-      exe("silent! !mv -f .at.".tagfile." ".tagfile."")
+    if 0 && len(lst)
+      exe("silent! !grep -v -E -e'[[:blank:]]".file."[[:blank:]]' ".tagfile.">".tagmaster#TmpFName(l:tagfile))
+      exe("silent! !ctags --tag-relative=yes -a -f ".tagmaster#TmpFName(l:tagfile)." ".g:tagmaster_options." ".expand("%"))
+      exe("silent! !mv -f ".tagmaster#TmpFName(l:tagfile)." ".tagfile."")
       return
     endif
   endfor
@@ -212,8 +251,17 @@ function! tagmaster#Delete(...)
 endfunction
 
 function! tagmaster#RelFName(name, tagname)
-  let tagpath = fnamemodify(a:tagname, ":p:h")."/"
-  let relpath = substitute(fnamemodify(a:name, ":p"), tagpath, "", "")
+  let downpath = ""
+  let relpath = "/"
+
+  while relpath[0] == "/"
+    let tagpath = fnamemodify(a:tagname, ":p:h".downpath)."/"
+    let relpath = substitute(fnamemodify(a:name, ":p"), tagpath, "", "")
+    if relpath != fnamemodify(a:name, ":p")
+      let relpath = substitute(downpath, ":h", "\.\./", "g") . relpath
+    endif
+    let downpath = downpath . ":h"
+  endwhile
   return relpath
 endfunction
 

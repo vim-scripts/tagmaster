@@ -18,11 +18,15 @@ Added commands:
       -norecurse    don't recurse into subdirectories
       -append       append tags rather than generate new file (similar to -a ctags option)
       tagfilename   tag file name (uses default if not specified)
+
   TUpdate/TUp
-  TUp [filename] [tagfilename]
+  TUp [-add/-noadd] [filename] [tagfilename]
     arguments:
+      -add          add tags for given file if they aren't already there.
+      -noadd        don't add tags for given file if they aren't there (update only).
       filename      file for which to update tags. Current file if not specified.
       tagfilename   tags file name (deduced or default if not specified)
+      
   TDelete/TDel
   TDel [filename] [tagfilename]
     arguments:
@@ -39,3 +43,6 @@ additional options for ctags (though in my opinion the better way is to specify 
 
   g:tagmaster_recursive = 1
 whether or not generate tags recursively by default (when neither -recurse nor -norecurse is specified)
+
+  g:tagmaster_addupdate = 1
+whether or not allow adding tags on update by default (when neither -add nor -noadd specified)
