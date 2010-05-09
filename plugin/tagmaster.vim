@@ -20,28 +20,52 @@ function! tagmaster#GetFilesForType()
   let ext = g:extensions[&filetype]
   let line = ""
   for mask in ext
-    let line = line . mask . " " . (recurse ? "**/" . mask . " " : "")
+    let files = (recurse ? glob("**/" . mask)." " : glob(mask))
+    let files = substitute(files, "\\_[\\r\\n]\\+", " ", "g")
+    let line = line . files
   endfor
-  return line
+  return split(line, " \\+")
 endfunction
 
 function! tagmaster#GenTagsForProject(...)
   let recurse = g:tagmaster_recursive
-  let extra_args = " "
+  let extra_args = ""
+  let append = 0
   for arg in a:000
     if arg == '-recurse'
       let g:tagmaster_recursive = 1
     elseif arg == '-norecurse'
       let g:tagmaster_recursive = 0
     elseif arg == '-append'
+      let append = 1
       let extra_args = extra_args . " -a"
+    elseif arg[0] == '-'
+      echohl ErrorMsg
+      echo "Error: Invalid argument: " . arg . ". Usage: TGen [-recurse/-norecurse] [tagfile]"
+      echohl vimEcho
+      return
     else
       let extra_args = extra_args . " -f '" . arg . "'"
     endif
   endfor
   let files = tagmaster#GetFilesForType()
 
-  exe("silent! !ctags --tag-relative=yes".extra_args." ".g:tagmaster_options." ".files)
+  let cl = ''
+  let run = 0
+  for file in files
+    let cl = cl . " " . file
+    if len(cl) > 1900 " Various systems offer 2096 to 64k comand line length. None do less.
+      exe("silent! !ctags --tag-relative=yes".extra_args." ".g:tagmaster_options." ".cl)
+      if run == 0 && !append
+        let extra_args = extra_args . " -a"
+      endif
+      let cl = ""
+      let run = run + 1
+    endif
+  endfor
+  if len(cl) > 0
+    exe("silent! !ctags --tag-relative=yes".extra_args." ".g:tagmaster_options." ".cl)
+  endif
   let g:tagmaster_recursive = recurse
 endfunction
 
@@ -68,6 +92,11 @@ function! tagmaster#GenTagsForFile(...)
       let allowadd = 1
     elseif fname == ""
       let fname = arg
+    elseif arg[0] == '-'
+      echohl ErrorMsg
+      echo "Error: Invalid argument: " . arg . ". Usage: TUp [-add/-noadd] [file] [tagfile]
+      echohl vimEcho
+      return
     else
       let tagsname = arg
     endif
@@ -150,7 +179,7 @@ function! tagmaster#Create(...)
   endif
 
   if l:tagfile != "" && filereadable(l:tagfile)
-    echohl vimError
+    echohl ErrorMsg
     echo "Error: tags file already exists!"
     return
   endif
@@ -222,7 +251,7 @@ function! tagmaster#Generate(...)
     return
   endif
 
-  echohl vimError
+  echohl ErrorMsg
   echo "Error: No tag files found!"
 endfunction
 
@@ -246,7 +275,7 @@ function! tagmaster#Delete(...)
     return
   endif
 
-  echohl vimError
+  echohl ErrorMsg
   echo "Error: No tag files found!"
 endfunction
 
